@@ -4595,6 +4595,10 @@ pub mod tests {
             fn reserve_size(&self) -> usize {
                 42
             }
+
+            fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+                Some(Ok(b"not a valid signature".to_vec()))
+            }
         }
 
         // test adding to actual image

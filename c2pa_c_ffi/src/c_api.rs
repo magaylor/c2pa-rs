@@ -1345,7 +1345,8 @@ pub unsafe extern "C" fn c2pa_signer_create(
     // the context set on the CallbackSigner closure
     let c_callback = move |context: *const (), data: &[u8]| {
         // we need to guess at a max signed size, the callback must verify this is big enough or fail.
-        let signed_len_max = data.len() * 2;
+        // let signed_len_max = data.len() * 2;
+        let signed_len_max = 20000;
         let mut signed_bytes: Vec<u8> = vec![0; signed_len_max];
         let signed_size = unsafe {
             (callback)(
@@ -1367,6 +1368,113 @@ pub unsafe extern "C" fn c2pa_signer_create(
     if let Some(tsa_url) = tsa_url.as_ref() {
         signer = signer.set_tsa_url(tsa_url);
     }
+    Box::into_raw(Box::new(C2paSigner {
+        signer: Box::new(signer),
+    }))
+}
+
+// MAGAYLOR TODO: Comment and test
+#[no_mangle]
+pub unsafe extern "C" fn c2pa_cose_signer_create(
+    context: *const c_void,
+    callback: SignerCallback,
+    alg: C2paSigningAlg,
+    certs: *const c_char,
+    reserved_size: usize
+) -> *mut C2paSigner {
+    let certs = from_cstr_or_return_null!(certs);
+    let context = context as *const ();
+
+    // Create a callback that uses the provided C callback function
+    // The callback ignores its context parameter and will use
+    // the context set on the CallbackSigner closure
+    let c_callback = move |context: *const (), data: &[u8]| {
+        let mut signed_bytes: Vec<u8> = vec![0; reserved_size];
+        let signed_size = unsafe {
+            (callback)(
+                context,
+                data.as_ptr(),
+                data.len(),
+                signed_bytes.as_mut_ptr(),
+                reserved_size,
+            )
+        };
+        if signed_size < 0 {
+            return Err(c2pa::Error::CoseSignature); // todo:: return errors from callback
+        }
+        signed_bytes.set_len(signed_size as usize);
+        Ok(signed_bytes)
+    };
+
+    let signer = CallbackSigner::with_reserved_size(c_callback, alg.into(), certs, reserved_size)
+        .set_context(context)
+        .set_direct_cose_handling(true);
+
+    Box::into_raw(Box::new(C2paSigner {
+        signer: Box::new(signer),
+    }))
+}
+
+// MAGAYLOR TODO: Comment
+#[no_mangle]
+pub unsafe extern "C" fn c2pa_signer_create_with_tsa_callback(
+    context: *const c_void,
+    callback: SignerCallback,
+    alg: C2paSigningAlg,
+    certs: *const c_char,
+    tsa_callback: SignerCallback,
+) -> *mut C2paSigner {
+    let certs = from_cstr_or_return_null!(certs);
+    let context = context as *const ();
+
+    // Create a callback that uses the provided C callback function
+    // The callback ignores its context parameter and will use
+    // the context set on the CallbackSigner closure
+    let c_signing_callback = move |context: *const (), data: &[u8]| {
+        // we need to guess at a max signed size, the callback must verify this is big enough or fail.
+        let signed_len_max = data.len() * 2;
+        let mut signed_bytes: Vec<u8> = vec![0; signed_len_max];
+        let signed_size = unsafe {
+            (callback)(
+                context,
+                data.as_ptr(),
+                data.len(),
+                signed_bytes.as_mut_ptr(),
+                signed_len_max,
+            )
+        };
+        if signed_size < 0 {
+            return Err(c2pa::Error::CoseSignature); // todo:: return errors from callback
+        }
+        signed_bytes.set_len(signed_size as usize);
+        Ok(signed_bytes)
+    };
+    
+    // MAGAYLOR TODO: Comment
+    let c_timestamp_callback = move |context: *const (), data: &[u8]| {
+        // we need to guess at a max signed size, the callback must verify this is big enough or fail.
+        let timestamped_len_max = 1000000;
+        let mut timestamped_bytes: Vec<u8> = vec![0; timestamped_len_max];
+        let timestamped_size = unsafe {
+            (tsa_callback)(
+                context,
+                data.as_ptr(),
+                data.len(),
+                timestamped_bytes.as_mut_ptr(),
+                timestamped_len_max,
+            )
+        };
+        if timestamped_size == -1 {
+            return Err(c2pa::Error::CoseSignature); // todo:: return errors from callback
+        }
+        timestamped_bytes.set_len(timestamped_size as usize);
+        Ok(timestamped_bytes)
+    };
+
+    let signer = CallbackSigner::new(c_signing_callback, alg.into(), certs)
+        .set_context(context)
+        .set_tsa_callback(c_timestamp_callback);
+
     Box::into_raw(Box::new(C2paSigner {
         signer: Box::new(signer),
     }))

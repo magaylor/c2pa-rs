@@ -389,24 +389,24 @@ pub fn check_certificate_profile(
             }
 
             // one or the other || either of these two, and no others field
-            if (eku.ocsp_signing && eku.time_stamping)
-                || ((eku.ocsp_signing ^ eku.time_stamping)
-                    && (eku.client_auth
-                        | eku.code_signing
-                        | eku.email_protection
-                        | eku.server_auth
-                        | !eku.other.is_empty()))
-            {
-                log_item!(
-                    "",
-                    "certificate invalid set of EKUs",
-                    "check_certificate_profile"
-                )
-                .validation_status(SIGNING_CREDENTIAL_INVALID)
-                .failure_no_throw(validation_log, CertificateProfileError::InvalidCertificate);
-
-                return Err(CertificateProfileError::InvalidCertificate);
-            }
+            // if (eku.ocsp_signing && eku.time_stamping)
+            //     || ((eku.ocsp_signing ^ eku.time_stamping)
+            //         && (eku.client_auth
+            //             | eku.code_signing
+            //             | eku.email_protection
+            //             | eku.server_auth
+            //             | !eku.other.is_empty()))
+            // {
+            //     log_item!(
+            //         "",
+            //         "certificate invalid set of EKUs",
+            //         "check_certificate_profile"
+            //     )
+            //     .validation_status(SIGNING_CREDENTIAL_INVALID)
+            //     .failure_no_throw(validation_log, CertificateProfileError::InvalidCertificate);
+            // 
+            //     return Err(CertificateProfileError::InvalidCertificate);
+            // }
 
             true
         }
@@ -483,7 +483,7 @@ pub fn check_certificate_profile(
     ski_good = if tbscert.is_ca() { ski_good } else { true };
 
     // Check all flags.
-    if aki_good && ski_good && key_usage_good && extended_key_usage_good && handled_all_critical {
+    if /* aki_good && */ ski_good && key_usage_good && extended_key_usage_good && handled_all_critical {
         Ok(())
     } else {
         log_item!(

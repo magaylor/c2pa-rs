@@ -291,6 +291,10 @@ fn test_dynamic_assertions_builder() -> Result<()> {
             self.0.time_authority_url()
         }
 
+        fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+            self.0.timestamp(data)
+        }
+
         fn ocsp_val(&self) -> Option<Vec<u8>> {
             self.0.ocsp_val()
         }

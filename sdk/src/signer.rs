@@ -44,6 +44,9 @@ pub trait Signer {
     fn time_authority_url(&self) -> Option<String> {
         None
     }
+    
+    /// callback to time stamp the signature
+    fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>>;
 
     /// Additional request headers to pass to the time stamp authority.
     ///
@@ -67,7 +70,10 @@ pub trait Signer {
     #[allow(unused)] // message not used on WASM
     fn send_timestamp_request(&self, message: &[u8]) -> Option<Result<Vec<u8>>> {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(url) = self.time_authority_url() {
+        // Try to use the timestamp callback but then fallback on the URL.
+        if let Some(response) = self.timestamp(message) {
+            return Some(response.map_err(|e| e.into()));
+        } else if let Some(url) = self.time_authority_url() {
             if let Ok(body) = self.timestamp_request_body(message) {
                 let headers: Option<Vec<(String, String)>> = self.timestamp_request_headers();
                 return Some(
@@ -95,7 +101,7 @@ pub trait Signer {
     /// This is useful for cases where the signer needs to handle the COSE structure directly.
     /// Not recommended for general use.
     fn direct_cose_handling(&self) -> bool {
-        false
+        true
     }
 
     /// Returns a list of dynamic assertions that should be included in the manifest.
@@ -171,6 +177,9 @@ pub trait AsyncSigner: Sync {
     fn time_authority_url(&self) -> Option<String> {
         None
     }
+    
+    /// callback to time stamp the signature
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>>;
 
     /// Additional request headers to pass to the time stamp authority.
     ///
@@ -194,14 +203,15 @@ pub trait AsyncSigner: Sync {
     async fn send_timestamp_request(&self, message: &[u8]) -> Option<Result<Vec<u8>>> {
         // NOTE: This is currently synchronous, but may become
         // async in the future.
-        if let Some(url) = self.time_authority_url() {
+        if let Some(response) = self.timestamp(message).await {
+            return Some(response.map_err(|e| e.into()));
+        } else if let Some(url) = self.time_authority_url() {
             if let Ok(body) = self.timestamp_request_body(message) {
                 let headers: Option<Vec<(String, String)>> = self.timestamp_request_headers();
                 return Some(
-                    crate::crypto::time_stamp::default_rfc3161_request_async(
+                    crate::crypto::time_stamp::default_rfc3161_request(
                         &url, headers, &body, message,
                     )
-                    .await
                     .map_err(|e| e.into()),
                 );
             }
@@ -271,6 +281,11 @@ pub trait AsyncSigner {
 
     /// URL for time authority to time stamp the signature
     fn time_authority_url(&self) -> Option<String> {
+        None
+    }
+    
+    /// callback to time stamp the signature
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
         None
     }
 
@@ -366,6 +381,10 @@ impl Signer for Box<dyn Signer> {
     fn time_authority_url(&self) -> Option<String> {
         (**self).time_authority_url()
     }
+    
+    fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        (**self).timestamp(data)
+    }
 
     fn timestamp_request_headers(&self) -> Option<Vec<(String, String)>> {
         (**self).timestamp_request_headers()
@@ -408,6 +427,12 @@ impl RawSigner for Box<dyn Signer> {
 }
 
 impl TimeStampProvider for Box<dyn Signer> {
+    fn timestamp(&self, data: &[u8]) -> Option<std::result::Result<Vec<u8>, TimeStampError>> {
+        self.as_ref()
+            .timestamp(data)
+            .map(|r| Ok(r?))
+    }
+
     fn time_stamp_service_url(&self) -> Option<String> {
         self.as_ref().time_authority_url()
     }
@@ -454,6 +479,10 @@ impl AsyncSigner for Box<dyn AsyncSigner + Send + Sync> {
 
     fn time_authority_url(&self) -> Option<String> {
         (**self).time_authority_url()
+    }
+    
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        (**self).timestamp(data).await
     }
 
     fn timestamp_request_headers(&self) -> Option<Vec<(String, String)>> {
@@ -506,6 +535,10 @@ impl AsyncSigner for Box<dyn AsyncSigner> {
 
     fn time_authority_url(&self) -> Option<String> {
         (**self).time_authority_url()
+    }
+    
+    fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        (**self).timestamp(data).await
     }
 
     fn timestamp_request_headers(&self) -> Option<Vec<(String, String)>> {
@@ -563,6 +596,10 @@ impl Signer for RawSignerWrapper {
 
     fn time_authority_url(&self) -> Option<String> {
         self.0.time_stamp_service_url()
+    }
+    
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+        None
     }
 
     fn timestamp_request_headers(&self) -> Option<Vec<(String, String)>> {

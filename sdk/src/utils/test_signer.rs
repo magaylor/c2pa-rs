@@ -149,6 +149,10 @@ impl AsyncSigner for AsyncRawSignerWrapper {
     async fn ocsp_val(&self) -> Option<Vec<u8>> {
         self.0.ocsp_response().await
     }
+    
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        self.0.timestamp(data).await?.map_err(|e| e.into())
+    }
 
     fn time_authority_url(&self) -> Option<String> {
         self.0.time_stamp_service_url()

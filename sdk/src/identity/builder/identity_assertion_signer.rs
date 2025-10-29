@@ -96,6 +96,10 @@ impl Signer for IdentityAssertionSigner {
     fn ocsp_val(&self) -> Option<Vec<u8>> {
         self.signer.ocsp_response()
     }
+    
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+        None
+    }
 
     fn time_authority_url(&self) -> Option<String> {
         self.signer.time_stamp_service_url()

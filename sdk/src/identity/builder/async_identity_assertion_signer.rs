@@ -140,6 +140,10 @@ impl AsyncSigner for AsyncIdentityAssertionSigner {
     fn reserve_size(&self) -> usize {
         self.signer.reserve_size()
     }
+    
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        Some(self.signer.timestamp(data).await?.map_err(|e| e.into()))
+    }
 
     async fn ocsp_val(&self) -> Option<Vec<u8>> {
         self.signer.ocsp_response().await

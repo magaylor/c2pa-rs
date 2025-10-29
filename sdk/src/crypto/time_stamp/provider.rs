@@ -24,6 +24,11 @@ use crate::crypto::{asn1::rfc3161::TimeStampReq, time_stamp::TimeStampError};
 ///
 /// [RFC 3161]: https://datatracker.ietf.org/doc/html/rfc3161
 pub trait TimeStampProvider {
+    /// Callback for performing timetsamp signing
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>, TimeStampError>> {
+        None
+    }
+
     /// Return the URL for time stamp service.
     fn time_stamp_service_url(&self) -> Option<String> {
         None
@@ -82,6 +87,11 @@ pub trait AsyncTimeStampProvider: Sync {
     // distinction can't be achieved without duplicating the trait definition 👎🏻.
     // Please verify that any changes made here are also made to the subsequent
     // definition of AsyncTimeStampProvider for WASM builds.
+    
+    /// Async callback for performing timetsamp signing
+    async fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>, TimeStampError>> {
+        None
+    }
 
     /// Return the URL for time stamp service.
     fn time_stamp_service_url(&self) -> Option<String> {
@@ -147,6 +157,11 @@ pub trait AsyncTimeStampProvider {
     // distinction can't be achieved without duplicating the trait definition 👎🏻.
     // Please verify that any changes made here are also made to the previous
     // definition of AsyncTimeStampProvider for non-WASM builds.
+
+    /// Async callback for performing timetsamp signing
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>, TimeStampError>> {
+        None
+    }
 
     /// Return the URL for time stamp service.
     fn time_stamp_service_url(&self) -> Option<String> {

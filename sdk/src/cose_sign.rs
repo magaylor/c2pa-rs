@@ -190,6 +190,12 @@ impl RawSigner for SignerWrapper<'_> {
 }
 
 impl TimeStampProvider for SignerWrapper<'_> {
+    fn timestamp(&self, data: &[u8]) -> Option<std::result::Result<Vec<u8>, TimeStampError>> {
+        self.0
+            .timestamp(data)
+            .map(|r| r.map_err(|e| e.into()))
+    }
+
     fn time_stamp_service_url(&self) -> Option<String> {
         self.0.time_authority_url()
     }
@@ -244,6 +250,13 @@ impl AsyncRawSigner for AsyncSignerWrapper<'_> {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl AsyncTimeStampProvider for AsyncSignerWrapper<'_> {
+    async fn timestamp(&self, data: &[u8]) -> Option<std::result::Result<Vec<u8>, TimeStampError>> {
+        self.0
+            .timestamp(data)
+            .await
+            .map(|r| r.map_err(|e| e.into()))
+    }
+
     fn time_stamp_service_url(&self) -> Option<String> {
         self.0.time_authority_url()
     }
@@ -364,6 +377,11 @@ mod tests {
 
         fn send_timestamp_request(&self, _message: &[u8]) -> Option<crate::error::Result<Vec<u8>>> {
             Some(Ok(Vec::new()))
+        }
+    
+        fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+            eprintln!("Canary, canary, please cause this deploy to fail!");
+            Some(Ok(b"totally bogus signature".to_vec()))
         }
     }
 

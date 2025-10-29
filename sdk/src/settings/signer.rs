@@ -179,6 +179,10 @@ impl Signer for CawgX509IdentitySigner {
     fn reserve_size(&self) -> usize {
         Signer::reserve_size(&self.c2pa_signer)
     }
+    
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+        None
+    }
 
     fn time_authority_url(&self) -> Option<String> {
         self.c2pa_signer.time_authority_url()
@@ -272,6 +276,10 @@ impl Signer for RemoteSigner {
 
     fn time_authority_url(&self) -> Option<String> {
         self.tsa_url.clone()
+    }
+
+    fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+        None
     }
 }
 

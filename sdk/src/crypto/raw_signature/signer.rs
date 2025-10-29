@@ -279,6 +279,12 @@ impl AsyncRawSigner for AsyncRawSignerWrapper {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl AsyncTimeStampProvider for AsyncRawSignerWrapper {
+    async fn timestamp(&self, data: &[u8]) -> Option<std::result::Result<Vec<u8>, TimeStampError>> {
+        self.0
+            .timestamp(data)
+            .map(|r| r.map_err(|e| e.into()))
+    }
+
     fn time_stamp_service_url(&self) -> Option<String> {
         self.0.time_stamp_service_url()
     }

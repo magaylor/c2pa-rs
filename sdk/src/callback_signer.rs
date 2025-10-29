@@ -20,7 +20,7 @@ use async_trait::async_trait;
 
 use crate::{crypto::raw_signature::SigningAlg, AsyncSigner, Error, Result, Signer};
 
-/// Defines a callback function interface for a [`CallbackSigner`].
+/// Defines a callback function interface for standard signing a [`CallbackSigner`].
 ///
 /// The callback should return a signature for the given data.
 /// The callback should return an error if the data cannot be signed.
@@ -35,7 +35,7 @@ pub struct CallbackSigner {
     pub context: *const (),
 
     /// The callback to use to sign data.
-    pub callback: Box<CallbackFunc>,
+    pub signing_callback: Box<CallbackFunc>,
 
     /// The signing algorithm to use.
     pub alg: SigningAlg,
@@ -48,6 +48,12 @@ pub struct CallbackSigner {
 
     /// The optional URL of a Time Stamping Authority.
     pub tsa_url: Option<String>,
+
+    /// The callback to use to timestamp data.
+    pub tsa_callback: Option<Box<CallbackFunc>>,
+    
+    /// The callback to use to sign COSE data.
+    pub direct_cose_handling: bool,
 }
 
 unsafe impl Send for CallbackSigner {}
@@ -63,9 +69,19 @@ impl CallbackSigner {
         let certs = certs.into();
         let reserve_size = 10000 + certs.len();
 
+        Self::with_reserved_size(callback, alg, certs, reserve_size)
+    }
+    
+    /// Create a new callback signer.
+    pub fn with_reserved_size<F, T>(callback: F, alg: SigningAlg, certs: T, reserve_size: usize) -> Self
+    where
+        F: Fn(*const (), &[u8]) -> std::result::Result<Vec<u8>, Error> + Send + Sync + 'static,
+        T: Into<Vec<u8>>,
+    {
+        let certs = certs.into();
         Self {
             context: std::ptr::null(),
-            callback: Box::new(callback),
+            signing_callback: Box::new(callback),
             alg,
             certs,
             reserve_size,
@@ -78,6 +94,17 @@ impl CallbackSigner {
         self.tsa_url = Some(url.into());
         self
     }
+    
+    /// Sets the optional callback for performing C2PA Timestamping.
+    /// 
+    /// The TSA URL will be used if this is not set.
+    pub fn set_tsa_callback<F>(mut self, tsa_callback: F) -> Self
+    where
+        F: Fn(*const (), &[u8]) -> std::result::Result<Vec<u8>, Error> + Send + Sync + 'static,
+    {
+        self.tsa_callback = Some(Box::new(tsa_callback));
+        self
+    }
 
     /// Set a context value for the signer.
     ///
@@ -86,6 +113,12 @@ impl CallbackSigner {
     /// There is no Rust memory management for the context since it may also come from FFI.
     pub fn set_context(mut self, context: *const ()) -> Self {
         self.context = context;
+        self
+    }
+    
+    /// Sets whether the signer will handle COSE structures directly.
+    pub fn set_direct_cose_handling(mut self, direct: bool) -> Self {
+        self.direct_cose_handling = direct;
         self
     }
 
@@ -128,18 +161,20 @@ impl Default for CallbackSigner {
     fn default() -> Self {
         Self {
             context: std::ptr::null(),
-            callback: Box::new(|_, _| Err(Error::UnsupportedType)),
+            signing_callback: Box::new(|_, _| Err(Error::UnsupportedType)),
             alg: SigningAlg::Es256,
             certs: Vec::new(),
             reserve_size: 10000,
             tsa_url: None,
+            tsa_callback: None,
+            direct_cose_handling: false,
         }
     }
 }
 
 impl Signer for CallbackSigner {
     fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
-        (self.callback)(self.context, data)
+        (self.signing_callback)(self.context, data)
     }
 
     fn alg(&self) -> SigningAlg {
@@ -154,9 +189,35 @@ impl Signer for CallbackSigner {
     fn reserve_size(&self) -> usize {
         self.reserve_size
     }
+    
+    fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        if let Some(callback) = &self.tsa_callback {
+            let result = (callback)(self.context, data);
+            match &result {
+                Ok(timestamp_response) =>
+                {
+                    if timestamp_response.is_empty()
+                    {
+                        None
+                    } else
+                    {
+                        Some(result)
+                    }
+                }
+                _ => Some(result)
+            }
+            
+        } else {
+            None
+        }
+    }
 
     fn time_authority_url(&self) -> Option<String> {
         self.tsa_url.clone()
+    }
+    
+    fn direct_cose_handling(&self) -> bool {
+        self.direct_cose_handling
     }
 }
 
@@ -164,7 +225,7 @@ impl Signer for CallbackSigner {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl AsyncSigner for CallbackSigner {
     async fn sign(&self, data: Vec<u8>) -> Result<Vec<u8>> {
-        (self.callback)(self.context, &data)
+        (self.signing_callback)(self.context, &data)
     }
 
     fn alg(&self) -> SigningAlg {
@@ -178,6 +239,14 @@ impl AsyncSigner for CallbackSigner {
 
     fn reserve_size(&self) -> usize {
         self.reserve_size
+    }
+    
+    async fn timestamp(&self, data: &[u8]) -> Option<Result<Vec<u8>>> {
+        if let Some(callback) = &self.tsa_callback {
+            Some((callback)(self.context, data))
+        } else {
+            None
+        }
     }
 
     fn time_authority_url(&self) -> Option<String> {
@@ -187,5 +256,9 @@ impl AsyncSigner for CallbackSigner {
     #[cfg(target_arch = "wasm32")]
     async fn send_timestamp_request(&self, _message: &[u8]) -> Option<Result<Vec<u8>>> {
         None
+    }
+    
+    fn direct_cose_handling(&self) -> bool {
+        self.direct_cose_handling
     }
 }

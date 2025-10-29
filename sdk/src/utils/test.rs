@@ -655,6 +655,10 @@ impl AsyncSigner for AsyncTestGoodSigner {
     fn reserve_size(&self) -> usize {
         1024
     }
+    
+    async fn timestamp(&self, _data: &[u8]) -> Option<Result<Vec<u8>>> {
+        Some(Ok(b"not a valid signature".to_vec()))
+    }
 
     async fn send_timestamp_request(
         &self,
